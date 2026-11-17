@@ -1,4 +1,4 @@
--- Session.lua - live session stats: casts, catches, gold/hour, catch log,
+-- Session.lua — live session stats: casts, catches, gold/hour, catch log,
 -- lure expiry and zone skill warnings. NO automation of any kind:
 -- nothing here casts, loots, or recasts.
 
@@ -61,14 +61,12 @@ end
 function Session.SummaryText()
     local s = Session.Stats()
     if not s then return "No session yet. Cast a line to start one." end
-    local lines = {
-        string.format("Session: %d casts, %d catches, %s earned, %s/h (over %d min)",
-            s.casts, s.catches and 0 or 0, FF.FormatGold(s.goldEarned), FF.FormatGold(s.goldPerHour), math.floor(s.duration / 60)),
-    }
     local total = 0
     for _, c in pairs(s.catches) do total = total + c end
-    lines[1] = string.format("Session: %d casts, %d catches, %s earned, %s/h (over %d min)",
-        s.casts, total, FF.FormatGold(s.goldEarned), FF.FormatGold(s.goldPerHour), math.floor(s.duration / 60))
+    local lines = {
+        string.format("Session: %d casts, %d catches, %s earned, %s/h (over %d min)",
+            s.casts, total, FF.FormatGold(s.goldEarned), FF.FormatGold(s.goldPerHour), math.floor(s.duration / 60)),
+    }
     for itemID, count in pairs(s.catches) do
         local fish = FF.FishDB.ByItemID[itemID]
         table.insert(lines, string.format("  %s x%d", fish and fish.name or ("item " .. itemID), count))
@@ -125,7 +123,7 @@ function Session.Init()
         self.elapsed = self.elapsed + dt
         if self.elapsed < 1.0 then return end -- 1 s cadence, well above the 0.2 s floor
         self.elapsed = 0
-        Session._Tick()
+        pcall(Session._Tick)
     end)
 end
 

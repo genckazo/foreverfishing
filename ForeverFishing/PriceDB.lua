@@ -1,4 +1,4 @@
--- PriceDB.lua - Auction House scanner + persistent price store.
+-- PriceDB.lua — Auction House scanner + persistent price store.
 -- "Live prices" = prices scanned from the in-game AH, stored in
 -- ForeverFishingDB SavedVariables, with scan age shown to the player.
 -- The addon has NO internet access; this is the only price source.
@@ -239,7 +239,7 @@ function PriceDB.HookTooltips()
             tooltip:AddLine("FF: " .. col .. FF.FormatGold(price) .. "|r median, last " ..
                 col .. FF.FormatGold(FF.PriceDB.Get(itemID).last) .. "|r (" .. age .. ")")
         else
-            tooltip:AddLine("FF: |cffffd100no price yet - /ff scan|r")
+            tooltip:AddLine("FF: |cffffd100no price yet — /ff scan|r")
         end
         local best = FF.Recommend and FF.Recommend.BestZoneForFish(itemID)
         if best then

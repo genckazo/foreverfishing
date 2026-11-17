@@ -1,15 +1,17 @@
-## Interface: 11105
+## Interface: 16001
 ## Title: ForeverFishing
-## Notes: Advanced fishing assistant: AH price scanning, zone recommendations, session coach.
+## Notes: Advanced fishing assistant: AH price scanning, zone recommendations, session coach. Works on Windows, macOS and Linux clients.
 ## Author: OpenBot
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariables: ForeverFishingDB
 ## LoadOnDemand: 0
 
-# NOTE: The Interface number above is a PLACEHOLDER. Step 0 of the spec requires
-# measuring it in game with /dump GetBuildInfo() and writing the real value here.
-# The addon feature-detects every API at runtime (see API.lua), so it loads on
-# both Era-style and newer clients regardless of this value.
+# Interface 16001 = the WoW Forever custom client (measured on a player PC;
+# the v0.1.1 build shipped to the tester used this value and loaded cleanly).
+# On a stock Classic Era client (11105) the addon still loads — it is only
+# flagged "out of date" — but if your client refuses it, set this line to your
+# own /dump GetBuildInfo() value. The addon feature-detects every API at
+# runtime (see API.lua), so it runs on either API family regardless.
 
 Core.lua
 API.lua

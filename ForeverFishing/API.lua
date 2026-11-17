@@ -1,4 +1,4 @@
--- API.lua - client-version adapter.
+-- API.lua — client-version adapter.
 -- Every version-specific call in the addon goes through this table.
 -- Detection happens once at load; each function is nil-guarded so an
 -- unprobed API degrades to nil instead of throwing.
@@ -38,7 +38,7 @@ function API.Init()
             if ok then return true, nil end
             return false, err
         elseif QueryAuctionItems then
-            -- Era API: QueryAuctionItems(slot, ...) - we search by name on the
+            -- Era API: QueryAuctionItems(slot, ...) — we search by name on the
             -- "owner"/text path: QueryAuctionItems(0, query...) is not a text
             -- search; Era uses blizzard's own AH UI filters. For a raw name
             -- scan we page the whole AH (slot = nil) and filter client-side.
@@ -197,7 +197,7 @@ function API.Init()
             end
         end
         if GetSkillLineInfo then
-            -- Era: GetSkillLineInfo(index) - scan for Fishing.
+            -- Era: GetSkillLineInfo(index) — scan for Fishing.
             local i = 1
             while true do
                 local ok, name, _, rank, _, _, mod = pcall(GetSkillLineInfo, i)
@@ -270,14 +270,21 @@ function API.Init()
         local link = GetInventoryItemLink and GetInventoryItemLink("player", slot)
         if not link then return 0 end
         -- Lure buffs appear as item buffs on the pole; simplest robust check:
-        -- scan aura slots for " fishing" in the name.
+        -- scan aura slots for "lure"/"fishing" in the name. Era uses
+        -- GetPlayerBuffName, newer clients use UnitAura — try both.
         for i = 1, 40 do
-            local name = GetPlayerBuffName and GetPlayerBuffName(i)
-            if not name then break end
-            local _, _, _, _, _, _, _, _, _, _, _, _, _, spellId = GetPlayerBuff and GetPlayerBuff(i)
+            local name
+            if UnitAura then
+                local ok, n = pcall(UnitAura, "player", i)
+                if not ok or not n then break end
+                name = n
+            else
+                name = GetPlayerBuffName and GetPlayerBuffName(i)
+                if not name then break end
+            end
             if name and (string.find(string.lower(name), "lure") or string.find(string.lower(name), "fishing")) then
                 -- Known lure buffs grant +skill; parse the number from the tooltip
-                -- is overkill - use the documented values via a small table.
+                -- is overkill — use the documented values via a small table.
                 local bonus = FF.LURE_BONUS_BY_NAME and FF.LURE_BONUS_BY_NAME[string.lower(name)]
                 if bonus then return bonus end
                 local num = string.match(name, "(%d+)")

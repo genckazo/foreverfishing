@@ -1,4 +1,4 @@
--- Core.lua - init, event bus, slash commands.
+-- Core.lua — init, event bus, slash commands.
 
 ForeverFishing = {}
 local FF = ForeverFishing
@@ -25,6 +25,18 @@ function FF.Fire(event, ...)
     for _, fn in ipairs(FF.events[event] or {}) do pcall(fn, ...) end
 end
 
+-- Report a failed step to chat without ever throwing: one broken module
+-- must never take the whole addon down ("never broken" guarantee).
+local function safe(name, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+        local msg = "|cff33ccff[ForeverFishing]|r module '" .. tostring(name) .. "' failed: " .. tostring(err)
+        if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(msg) end
+    end
+    return ok
+end
+FF.safe = safe
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
@@ -34,29 +46,33 @@ frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" and select(1, ...) == "ForeverFishing" then
-        FF.API.Init()
-        FF.PriceDB.HookTooltips()
-        FF.Session.Init()
-        local opts = FF.Options.Get()
-        if opts.overlayEnabled then FF.Session.ToggleOverlay(true) end
+        safe("API", FF.API.Init)
+        safe("PriceDB", FF.PriceDB.HookTooltips)
+        safe("Session", FF.Session.Init)
+        safe("Options", function()
+            local opts = FF.Options.Get()
+            if opts.overlayEnabled then FF.Session.ToggleOverlay(true) end
+        end)
     elseif event == "PLAYER_LOGIN" then
-        FF.UI.InitMinimap()
+        safe("UI", FF.UI.InitMinimap)
     elseif event == "AUCTION_HOUSE_SHOW" then
-        if FF.Options.Get().autoScanOnAH and not FF.PriceDB.IsScanning() then
-            FF.PriceDB.StartScan()
-        end
+        safe("PriceDB", function()
+            if FF.Options.Get().autoScanOnAH and not FF.PriceDB.IsScanning() then
+                FF.PriceDB.StartScan()
+            end
+        end)
     elseif event == "CHAT_MSG_LOOT" then
         -- Catch detection: loot message "You receive item: X." / "Received ...".
         local msg = select(1, ...)
         local link = msg and string.match(msg, "|Hitem:(%d+)")
         if link then
             local id = tonumber(link)
-            if FF.FishDB.ByItemID[id] then FF.Session.Catch(id) end
+            if FF.FishDB.ByItemID[id] then safe("Session", FF.Session.Catch, id) end
         end
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit, _, spellID = select(1, ...), select(2, ...), select(3, ...)
         if unit == "player" and spellID == 7620 then -- Fishing (Classic spellID, verify via probe)
-            FF.Session.Cast()
+            safe("Session", FF.Session.Cast)
         end
     end
 end)
@@ -64,6 +80,10 @@ end)
 -- Slash commands.
 SLASH_FF1 = "/ff"
 SlashCmdList["FF"] = function(msg)
+    safe("slash", FF._Slash, msg)
+end
+
+function FF._Slash(msg)
     local cmd, arg = string.match(msg or "", "^(%S*)%s*(.*)$")
     cmd = string.lower(cmd or "")
     if cmd == "" or cmd == "panel" then
@@ -73,9 +93,9 @@ SlashCmdList["FF"] = function(msg)
         else FF.API.Print("Usage: /ff scan start") end
     elseif cmd == "best" then
         local top = FF.Recommend.TopZones(FF.Options.Get().debugSkill and { debugSkill = FF.Options.Get().debugSkill } or nil)
-        if #top == 0 then FF.API.Print("No recommendations - scan the AH first (/ff scan start).") return end
+        if #top == 0 then FF.API.Print("No recommendations — scan the AH first (/ff scan start).") return end
         for i, z in ipairs(top) do
-            FF.API.Print(string.format("#%d %s - est %s/h%s | %s | %s",
+            FF.API.Print(string.format("#%d %s — est %s/h%s | %s | %s",
                 i, z.zoneName, FF.FormatGold(z.goldPerHour), z.unpriced and " (unpriced mode)" or "",
                 z.getawayNote, z.lureAdvice))
         end

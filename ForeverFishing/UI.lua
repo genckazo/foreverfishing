@@ -1,7 +1,7 @@
--- UI.lua - main panel (4 tabs), minimap button, waypoint helper.
+-- UI.lua — main panel (4 tabs), minimap button, waypoint helper.
 -- Everything movable; position persisted in SavedVariables.
 -- v0.2.0 restyle: deep-water + gold theme, tabs inside the panel with a
--- gold active marker, divider lines, and a region pool - Refresh() runs
+-- gold active marker, divider lines, and a region pool — Refresh() runs
 -- every 0.5s, and FontStrings/Textures are NOT returned by GetChildren(),
 -- so the old cleanup leaked them on every single refresh.
 
@@ -12,10 +12,6 @@ FF.UI = UI
 local panel = nil
 local minimapBtn = nil
 local currentTab = "where"
-
--- Custom addon icon shipped as icon.tga next to this file (works on every
--- OS: the game client reads it from the addon folder at runtime).
-local ICON_PATH = "Interface\\AddOns\\ForeverFishing\\icon.tga"
 
 local TABS = {
     { key = "where",   label = "Where to Fish" },
@@ -69,7 +65,10 @@ end
 
 local function poolBtn(parent)
     local b = table.remove(pool.btn)
-    if not b then b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") end
+    if not b then
+        local ok, nb = pcall(CreateFrame, "Button", nil, parent, "UIPanelButtonTemplate")
+        b = (ok and nb) or CreateFrame("Button", nil, parent)
+    end
     b:SetParent(parent)
     b:ClearAllPoints()
     b:SetScript("OnClick", nil)
@@ -88,24 +87,28 @@ local function releaseLive()
     live = {}
 end
 
+-- Create with the richest template the client actually has; an unknown
+-- template name throws, so probe with pcall and fall back to a plain frame.
+local function makePanel()
+    local ok, p = pcall(CreateFrame, "Frame", "FFPanel", UIParent, "BasicFrameTemplateWithInset")
+    if ok and p then return p end
+    ok, p = pcall(CreateFrame, "Frame", "FFPanel", UIParent, "BasicFrameTemplate")
+    if ok and p then return p end
+    return CreateFrame("Frame", "FFPanel", UIParent)
+end
+
 local function ensurePanel()
     if panel then return panel end
-    local panelTemplate = (BasicFrameTemplateWithInset ~= nil) and "BasicFrameTemplateWithInset" or nil
-    panel = CreateFrame("Frame", "FFPanel", UIParent, panelTemplate)
-    if not panelTemplate then
-        -- Older clients lack the inset template: build the chrome by hand
-        -- from long-standing built-in textures so the panel never errors.
+    panel = makePanel()
+    -- Plain-frame fallback has no inset/title bar: give it a backdrop so it
+    -- is still a visible, bordered window on any client.
+    if not panel.TitleBg then
         panel:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 24,
-            insets = { left = 10, right = 10, top = 10, bottom = 10 },
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true,
         })
-        panel.TitleBg = panel:CreateTexture(nil, "BORDER")
-        panel.TitleBg:SetColorTexture(0.05, 0.16, 0.24, 0.95)
-        panel.TitleBg:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -8)
-        panel.TitleBg:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -8, -8)
-        panel.TitleBg:SetHeight(30)
+        panel:SetBackdropColor(0.02, 0.08, 0.13, 0.94)
+        panel:SetBackdropBorderColor(0.55, 0.45, 0.20, 0.9)
     end
     panel:SetSize(520, 420)
     panel:SetPoint("CENTER")
@@ -135,13 +138,17 @@ local function ensurePanel()
         end)
     end
 
-    panel.TitleBg:SetHeight(30)
+    if panel.TitleBg then panel.TitleBg:SetHeight(30) end
     local icon = panel:CreateTexture(nil, "ARTWORK")
     icon:SetSize(18, 18)
     icon:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -7)
-    icon:SetTexture(ICON_PATH)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Fish_01")
     panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    panel.title:SetPoint("TOP", panel.TitleBg, "TOP", 0, -8)
+    if panel.TitleBg then
+        panel.title:SetPoint("TOP", panel.TitleBg, "TOP", 0, -8)
+    else
+        panel.title:SetPoint("TOP", panel, "TOP", 0, -10)
+    end
     panel.title:SetText("ForeverFishing")
     panel.title:SetTextColor(unpack(THEME.gold))
     panel:Hide()
@@ -150,13 +157,26 @@ local function ensurePanel()
     if db and db.panelPos then panel:SetPoint(unpack(db.panelPos)) end
 
     -- Tab buttons, inside the panel under the title bar. The active tab
-    -- gets gold text and a gold underline bar.
+    -- gets gold text and a gold underline bar. Icons are built-in game
+    -- textures (shipped with every client, all OS); a missing icon just
+    -- renders blank, it never errors.
+    local TAB_ICONS = {
+        where   = "Interface\\Icons\\INV_Misc_Fish_01",
+        prices  = "Interface\\Icons\\INV_Misc_Coin_02",
+        session = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+        options = "Interface\\Icons\\INV_Misc_Gear_01",
+    }
     local tabBtns = {}
     for i, t in ipairs(TABS) do
-        local b = CreateFrame("Button", "FFTab" .. t.key, panel, "UIPanelButtonTemplate")
+        local ok, b = pcall(CreateFrame, "Button", "FFTab" .. t.key, panel, "UIPanelButtonTemplate")
+        if not ok or not b then b = CreateFrame("Button", "FFTab" .. t.key, panel) end
         b:SetSize(120, 22)
         b:SetPoint("TOPLEFT", panel, "TOPLEFT", 10 + (i - 1) * 124, -30)
         b:SetText(t.label)
+        local ticon = b:CreateTexture(nil, "ARTWORK")
+        ticon:SetSize(14, 14)
+        ticon:SetPoint("LEFT", b, "LEFT", 6, 0)
+        ticon:SetTexture(TAB_ICONS[t.key] or TAB_ICONS.where)
         b:SetScript("OnClick", function() UI.ShowTab(t.key) end)
         local bar = b:CreateTexture(nil, "OVERLAY")
         bar:SetColorTexture(unpack(THEME.gold))
@@ -169,8 +189,9 @@ local function ensurePanel()
     end
     UI._tabBtns = tabBtns
 
-    -- Content scroll frame.
-    local scroll = CreateFrame("ScrollFrame", "FFScroll", panel, "UIPanelScrollFrameTemplate")
+    -- Content scroll frame (template if present, plain otherwise).
+    local okS, scroll = pcall(CreateFrame, "ScrollFrame", "FFScroll", panel, "UIPanelScrollFrameTemplate")
+    if not okS or not scroll then scroll = CreateFrame("ScrollFrame", "FFScroll", panel) end
     scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -58)
     scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 8)
     local content = CreateFrame("Frame", "FFScrollChild", scroll)
@@ -259,8 +280,8 @@ function UI._RenderWhere(c)
     end
     for i, z in ipairs(top) do
         if i > 1 then y = addDivider(c, y) end
-        y = addLine(c, string.format("#%d  %s - est %s/h%s", i, z.zoneName,
-            FF.FormatGold(z.goldPerHour), z.unpriced and "  [UNPRICED MODE - static tiers]" or ""),
+        y = addLine(c, string.format("#%d  %s — est %s/h%s", i, z.zoneName,
+            FF.FormatGold(z.goldPerHour), z.unpriced and "  [UNPRICED MODE — static tiers]" or ""),
             y, i == 1 and THEME.gold or THEME.teal)
         y = addLine(c, "   " .. z.getawayNote, y)
         y = addLine(c, "   Lure: " .. z.lureAdvice, y)
@@ -281,18 +302,18 @@ end
 function UI._RenderPrices(c)
     local y = -8
     if not FF.PriceDB.HasAnyPrices() then
-        y = addLine(c, "No prices yet - open the Auction House or /ff scan start", y, THEME.warn)
+        y = addLine(c, "No prices yet — open the Auction House or /ff scan start", y, THEME.warn)
     end
     y = addLine(c, string.format("%-24s %10s %10s %12s %s", "Fish", "Last", "Median", "Age", "Best zone"), y, THEME.goldDim)
     y = addDivider(c, y + 4)
     for _, f in ipairs(FF.FishDB.FISH) do
         local p = FF.PriceDB.Get(f.itemID)
-        local last = p and FF.FormatGold(p.last) or "-"
+        local last = p and FF.FormatGold(p.last) or "—"
         local med = FF.PriceDB.Median(f.itemID)
-        med = med and FF.FormatGold(med) or "-"
+        med = med and FF.FormatGold(med) or "—"
         local age = FF.PriceDB.FormatAge(f.itemID)
         local stale = FF.PriceDB.IsStale(f.itemID)
-        local best = FF.Recommend.BestZoneForFish(f.itemID) or "-"
+        local best = FF.Recommend.BestZoneForFish(f.itemID) or "—"
         local col = stale and THEME.dim or THEME.text
         y = addLine(c, string.format("%-24s %10s %10s %12s %s%s", f.name, last, med, age, best, stale and " (stale)" or ""), y, col)
     end
@@ -335,7 +356,7 @@ function UI.SetWaypoint(zoneKey)
         pcall(TomTom.AddWaypoint, zone.id, nil, nil, { title = zone.name .. " (fishing)" })
         FF.API.Print("TomTom waypoint set: " .. zone.name)
     else
-        FF.API.Print("No TomTom - travel to " .. zone.name .. " and fish its pools/open water.")
+        FF.API.Print("No TomTom — travel to " .. zone.name .. " and fish its pools/open water.")
     end
 end
 
@@ -349,7 +370,7 @@ function UI.InitMinimap()
     local icon = minimapBtn:CreateTexture(nil, "BACKGROUND")
     icon:SetSize(20, 20)
     icon:SetPoint("CENTER")
-    icon:SetTexture(ICON_PATH)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Fish_01")
     minimapBtn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     local ring = minimapBtn:CreateTexture(nil, "ARTWORK")
     ring:SetSize(54, 54)

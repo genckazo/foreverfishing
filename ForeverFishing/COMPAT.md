@@ -1,4 +1,4 @@
-# COMPAT.md - probe findings, unconfirmed IDs, cut features
+# COMPAT.md — probe findings, unconfirmed IDs, cut features
 
 ## Step 0 probe: NOT YET RUN (requires in-game access)
 
@@ -38,7 +38,7 @@ Also measure the AH query cooldown if any (time between accepted
 The code never assumes: `API.lua` feature-detects every one of these at load
 and nil-guards each call, so the addon loads on either API family.
 
-## Unconfirmed itemIDs (ALL are Classic-era hypotheses - verify each against ForeverDB)
+## Unconfirmed itemIDs (ALL are Classic-era hypotheses — verify each against ForeverDB)
 
 | Fish | itemID used | Status |
 |---|---|---|
@@ -51,12 +51,12 @@ and nil-guards each call, so the addon loads on either API family.
 | Raw Sunscale Salmon | 13754 | unconfirmed |
 | Raw Glowing Brightfish | 13759 | unconfirmed |
 | Raw Mightfish | 13760 | unconfirmed |
-| Winter Squid | 13755 | unconfirmed - possible collision with Raw Redgill in some DBs |
+| Winter Squid | 13755 | unconfirmed — possible collision with Raw Redgill in some DBs |
 | Raw Summer Bass | 13758 | unconfirmed |
 | Stonescale Eel | 13761 | unconfirmed |
 
-Zone mapIDs (1411-1452 range values in `FishDB.ZONES`) are Classic mapID
-hypotheses - verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
+Zone mapIDs (1411–1452 range values in `FishDB.ZONES`) are Classic mapID
+hypotheses — verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
 
 ## Cut features (anti-botting rule)
 
@@ -66,7 +66,7 @@ hypotheses - verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
   counting is passive (spell-cast event) only. Re-add a one-press-one-cast
   override binding only if explicitly requested.
 - No web API anywhere; the optional SavedVariables companion-sync stretch
-  module was **not built** - the addon is fully standalone.
+  module was **not built** — the addon is fully standalone.
 - No embedded libraries; no Ace3 (probe not run). Hand-rolled only.
 
 ## Known limitations
@@ -96,3 +96,22 @@ hypotheses - verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
   old cleanup only removed frames (GetChildren), so FontStrings and
   Textures leaked on every refresh. All render regions now go through
   a recycle pool in UI.lua.
+
+## 2026-11-17 Cross-platform hardening (v0.3.0)
+- Target: Windows, macOS and Linux clients, never hard-broken. The addon is
+  pure Lua with no OS-specific code and no file I/O, so the same folder works
+  on all three; all UI art uses textures built into the game client.
+- `## Interface:` set to 16001 (WoW Forever client, confirmed by the live fix
+  above). Stock Era clients still load it (flagged out-of-date only); if a
+  client refuses, set the line to its own `/dump GetBuildInfo()` value.
+- Core.lua: every module init, event handler and the /ff slash command now run
+  inside pcall guards — one unsupported API logs a chat line instead of a
+  Lua error, and the rest of the addon keeps working.
+- UI.lua: panel/scroll/button creation falls back through
+  BasicFrameTemplateWithInset -> BasicFrameTemplate -> plain frame (with a
+  manual backdrop), since an unknown template name throws on some clients.
+  TitleBg is nil-guarded. Tab icons use built-in icon textures; a missing
+  icon renders blank and never errors.
+- Session.lua: session ticker wrapped in pcall; SummaryText double-format
+  cleanup. API.lua: lure detection tries UnitAura (newer) then
+  GetPlayerBuffName (Era).
