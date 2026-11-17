@@ -1,0 +1,21 @@
+## Interface: 11105
+## Title: ForeverFishing
+## Notes: Advanced fishing assistant: AH price scanning, zone recommendations, session coach.
+## Author: OpenBot
+## Version: 0.1.0
+## SavedVariables: ForeverFishingDB
+## LoadOnDemand: 0
+
+# NOTE: The Interface number above is a PLACEHOLDER. Step 0 of the spec requires
+# measuring it in game with /dump GetBuildInfo() and writing the real value here.
+# The addon feature-detects every API at runtime (see API.lua), so it loads on
+# both Era-style and newer clients regardless of this value.
+
+Core.lua
+API.lua
+FishDB.lua
+PriceDB.lua
+Recommend.lua
+Session.lua
+Options.lua
+UI.lua
