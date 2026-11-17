@@ -1,4 +1,4 @@
--- API.lua — client-version adapter.
+-- API.lua - client-version adapter.
 -- Every version-specific call in the addon goes through this table.
 -- Detection happens once at load; each function is nil-guarded so an
 -- unprobed API degrades to nil instead of throwing.
@@ -38,7 +38,7 @@ function API.Init()
             if ok then return true, nil end
             return false, err
         elseif QueryAuctionItems then
-            -- Era API: QueryAuctionItems(slot, ...) — we search by name on the
+            -- Era API: QueryAuctionItems(slot, ...) - we search by name on the
             -- "owner"/text path: QueryAuctionItems(0, query...) is not a text
             -- search; Era uses blizzard's own AH UI filters. For a raw name
             -- scan we page the whole AH (slot = nil) and filter client-side.
@@ -99,6 +99,82 @@ function API.Init()
         return nil
     end
 
+    -- Modern (C_AuctionHouse) per-item search path. SendSearchQuery takes
+    -- an ItemKey table as argument #1 -- there is no text query on this API.
+    function API.AHIsOpen()
+        if AuctionHouseFrame and AuctionHouseFrame.IsShown then
+            local ok, shown = pcall(AuctionHouseFrame.IsShown, AuctionHouseFrame)
+            if ok then return shown end
+        end
+        return true
+    end
+
+    function API.AHItemKey(itemID)
+        if C_AuctionHouse and C_AuctionHouse.MakeItemKey then
+            local ok, key = pcall(C_AuctionHouse.MakeItemKey, itemID, 0, 0, 0)
+            if ok and key then return key end
+        end
+        return { itemID = itemID, itemLevel = 0, itemSuffix = 0, battlePetSpeciesID = 0 }
+    end
+
+    function API.AHSearchItem(itemKey)
+        if not (C_AuctionHouse and C_AuctionHouse.SendSearchQuery) then
+            return false, "no C_AuctionHouse.SendSearchQuery"
+        end
+        local sorts = {}
+        if Enum and Enum.AuctionHouseSortOrder and Enum.AuctionHouseSortOrder.Price then
+            sorts = { { sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false } }
+        end
+        local ok, err = pcall(C_AuctionHouse.SendSearchQuery, itemKey, sorts, false)
+        if ok then return true, nil end
+        return false, err
+    end
+
+    function API.AHResultsReady(itemKey)
+        if C_AuctionHouse and C_AuctionHouse.HasFullItemSearchResultsReadyToDeliver then
+            local ok, ready = pcall(C_AuctionHouse.HasFullItemSearchResultsReadyToDeliver)
+            if ok then return ready end
+        end
+        if C_AuctionHouse and C_AuctionHouse.GetItemSearchResults then
+            local ok, res = pcall(C_AuctionHouse.GetItemSearchResults, itemKey)
+            if ok and res then return true end
+        end
+        return false
+    end
+
+    -- Cheapest per-unit buyout (copper) among current listings, or nil.
+    function API.AHCheapestPerUnit(itemKey)
+        if not C_AuctionHouse then return nil end
+        local best = nil
+        local function consider(buyout, qty)
+            if buyout and buyout > 0 then
+                qty = qty or 1
+                if qty < 1 then qty = 1 end
+                local per = buyout / qty
+                if not best or per < best then best = per end
+            end
+        end
+        if C_AuctionHouse.GetItemSearchResults then
+            local ok, res = pcall(C_AuctionHouse.GetItemSearchResults, itemKey)
+            if ok and type(res) == "table" then
+                for _, r in ipairs(res) do
+                    if type(r) == "table" then consider(r.buyoutAmount, r.quantity or r.count) end
+                end
+                return best
+            end
+        end
+        if C_AuctionHouse.GetNumItemSearchResults and C_AuctionHouse.GetItemSearchResultInfo then
+            local ok, n = pcall(C_AuctionHouse.GetNumItemSearchResults, itemKey)
+            if ok and n then
+                for i = 1, n do
+                    local ok2, info = pcall(C_AuctionHouse.GetItemSearchResultInfo, itemKey, i)
+                    if ok2 and type(info) == "table" then consider(info.buyoutAmount, info.quantity or info.count) end
+                end
+            end
+        end
+        return best
+    end
+
     -- Fishing skill: returns (skillLevel, skillMod) or nils.
     function API.GetFishingSkill()
         if C_SkillLine and C_SkillLine.GetSkillInfo then
@@ -121,7 +197,7 @@ function API.Init()
             end
         end
         if GetSkillLineInfo then
-            -- Era: GetSkillLineInfo(index) — scan for Fishing.
+            -- Era: GetSkillLineInfo(index) - scan for Fishing.
             local i = 1
             while true do
                 local ok, name, _, rank, _, _, mod = pcall(GetSkillLineInfo, i)
@@ -201,7 +277,7 @@ function API.Init()
             local _, _, _, _, _, _, _, _, _, _, _, _, _, spellId = GetPlayerBuff and GetPlayerBuff(i)
             if name and (string.find(string.lower(name), "lure") or string.find(string.lower(name), "fishing")) then
                 -- Known lure buffs grant +skill; parse the number from the tooltip
-                -- is overkill — use the documented values via a small table.
+                -- is overkill - use the documented values via a small table.
                 local bonus = FF.LURE_BONUS_BY_NAME and FF.LURE_BONUS_BY_NAME[string.lower(name)]
                 if bonus then return bonus end
                 local num = string.match(name, "(%d+)")

@@ -2,7 +2,7 @@
 ## Title: ForeverFishing
 ## Notes: Advanced fishing assistant: AH price scanning, zone recommendations, session coach.
 ## Author: OpenBot
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: ForeverFishingDB
 ## LoadOnDemand: 0
 

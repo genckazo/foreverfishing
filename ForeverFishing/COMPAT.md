@@ -1,4 +1,4 @@
-# COMPAT.md — probe findings, unconfirmed IDs, cut features
+# COMPAT.md - probe findings, unconfirmed IDs, cut features
 
 ## Step 0 probe: NOT YET RUN (requires in-game access)
 
@@ -38,7 +38,7 @@ Also measure the AH query cooldown if any (time between accepted
 The code never assumes: `API.lua` feature-detects every one of these at load
 and nil-guards each call, so the addon loads on either API family.
 
-## Unconfirmed itemIDs (ALL are Classic-era hypotheses — verify each against ForeverDB)
+## Unconfirmed itemIDs (ALL are Classic-era hypotheses - verify each against ForeverDB)
 
 | Fish | itemID used | Status |
 |---|---|---|
@@ -51,12 +51,12 @@ and nil-guards each call, so the addon loads on either API family.
 | Raw Sunscale Salmon | 13754 | unconfirmed |
 | Raw Glowing Brightfish | 13759 | unconfirmed |
 | Raw Mightfish | 13760 | unconfirmed |
-| Winter Squid | 13755 | unconfirmed — possible collision with Raw Redgill in some DBs |
+| Winter Squid | 13755 | unconfirmed - possible collision with Raw Redgill in some DBs |
 | Raw Summer Bass | 13758 | unconfirmed |
 | Stonescale Eel | 13761 | unconfirmed |
 
-Zone mapIDs (1411–1452 range values in `FishDB.ZONES`) are Classic mapID
-hypotheses — verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
+Zone mapIDs (1411-1452 range values in `FishDB.ZONES`) are Classic mapID
+hypotheses - verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
 
 ## Cut features (anti-botting rule)
 
@@ -66,7 +66,7 @@ hypotheses — verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
   counting is passive (spell-cast event) only. Re-add a one-press-one-cast
   override binding only if explicitly requested.
 - No web API anywhere; the optional SavedVariables companion-sync stretch
-  module was **not built** — the addon is fully standalone.
+  module was **not built** - the addon is fully standalone.
 - No embedded libraries; no Ace3 (probe not run). Hand-rolled only.
 
 ## Known limitations
@@ -77,3 +77,22 @@ hypotheses — verify via `C_Map.GetMapInfo` / `/dump GetCurrentMapAreaID()`.
   `FF.LURE_BONUS_BY_NAME` entry.
 - `GetServerTime` falls back to local time if `GetGameTime` is missing
   (flagged: wrong near server-midnight offsets).
+
+## 2026-11-17 live fix (friend Windows client, build 1.60.1, interface 16001)
+- /ff scan start failed with "bad argument #1" from
+  C_AuctionHouse.SendSearchQuery: API.AHSearch passed an empty string
+  where an ItemKey table is required. C_AuctionHouse confirmed present.
+- Fix: modern scan rewritten as per-fish ItemKey searches
+  (API.AHItemKey / AHSearchItem / AHResultsReady / AHCheapestPerUnit,
+  PriceDB._ScanTickModern). Legacy paging kept as _ScanTickEra.
+  The replicate read path (AHResultCount/AHReadItem) is now unused by
+  the modern driver and remains unprobed. Rest of the probe still open.
+
+## 2026-11-17 UI restyle (v0.2.0)
+- Deep-water + gold theme: gradient panel interior, gold title with
+  fish icon, tabs moved inside the panel with gold active marker,
+  divider lines, styled session overlay and minimap ring.
+- Real bug fixed on the way: Refresh() re-renders every 0.5s and the
+  old cleanup only removed frames (GetChildren), so FontStrings and
+  Textures leaked on every refresh. All render regions now go through
+  a recycle pool in UI.lua.

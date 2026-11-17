@@ -1,4 +1,4 @@
--- FishDB.lua — static, data-only knowledge base. Editable by the player.
+-- FishDB.lua - static, data-only knowledge base. Editable by the player.
 -- ALL itemIDs and mapIDs below are Classic-Era hypotheses. WoW Forever has
 -- custom/changed items, so each one MUST be verified against ForeverDB and
 -- the results logged in COMPAT.md. Treat every ID here as unconfirmed.
@@ -7,7 +7,7 @@ local FF = ForeverFishing
 local FishDB = {}
 FF.FishDB = FishDB
 
--- Zone mapIDs (Classic mapID hypotheses — verify via probe/C_Map).
+-- Zone mapIDs (Classic mapID hypotheses - verify via probe/C_Map).
 FishDB.ZONES = {
     barrens    = { id = 1413, name = "The Barrens" },
     stv        = { id = 1434, name = "Stranglethorn Vale" },
@@ -34,7 +34,7 @@ FishDB.POOLS = {
 }
 
 -- Fish entries. Fields:
---  itemID      Classic-era hypothesis — VERIFY against ForeverDB
+--  itemID      Classic-era hypothesis - VERIFY against ForeverDB
 --  name        display name
 --  zones       keys into ZONES
 --  pool        key into POOLS, or nil for open water
@@ -103,7 +103,7 @@ FishDB.FISH = {
         share = 0.10, tier = 5, cookedNote = "Cooked Mightfish is a top seller.",
     },
     {
-        itemID = 13755, name = "Winter Squid",           -- Era hypothesis, verify (conflicts with Raw Redgill 13755 in some DBs — MUST verify)
+        itemID = 13755, name = "Winter Squid",           -- Era hypothesis, verify (conflicts with Raw Redgill 13755 in some DBs - MUST verify)
         zones = { "tanaris", "winterspring", "azshara", "hinterlands" },
         pool = "floatingWreckage", minSkill = 200, noGetaway = 300,
         timeWindow = nil, season = { 12, 1, 2 },

@@ -1,4 +1,4 @@
--- Core.lua — init, event bus, slash commands.
+-- Core.lua - init, event bus, slash commands.
 
 ForeverFishing = {}
 local FF = ForeverFishing
@@ -73,9 +73,9 @@ SlashCmdList["FF"] = function(msg)
         else FF.API.Print("Usage: /ff scan start") end
     elseif cmd == "best" then
         local top = FF.Recommend.TopZones(FF.Options.Get().debugSkill and { debugSkill = FF.Options.Get().debugSkill } or nil)
-        if #top == 0 then FF.API.Print("No recommendations — scan the AH first (/ff scan start).") return end
+        if #top == 0 then FF.API.Print("No recommendations - scan the AH first (/ff scan start).") return end
         for i, z in ipairs(top) do
-            FF.API.Print(string.format("#%d %s — est %s/h%s | %s | %s",
+            FF.API.Print(string.format("#%d %s - est %s/h%s | %s | %s",
                 i, z.zoneName, FF.FormatGold(z.goldPerHour), z.unpriced and " (unpriced mode)" or "",
                 z.getawayNote, z.lureAdvice))
         end

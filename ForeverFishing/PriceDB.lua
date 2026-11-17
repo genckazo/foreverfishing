@@ -1,4 +1,4 @@
--- PriceDB.lua — Auction House scanner + persistent price store.
+-- PriceDB.lua - Auction House scanner + persistent price store.
 -- "Live prices" = prices scanned from the in-game AH, stored in
 -- ForeverFishingDB SavedVariables, with scan age shown to the player.
 -- The addon has NO internet access; this is the only price source.
@@ -94,22 +94,48 @@ function PriceDB.HasAnyPrices()
     return false
 end
 
--- Full AH scan. Pages through results, filters to fish itemIDs, throttled.
+-- Full AH scan.
+-- Modern clients (C_AuctionHouse): per-fish ItemKey searches, because
+-- SendSearchQuery takes an ItemKey -- there is no text query. The first
+-- version passed an empty string as argument #1 and the client rejected
+-- it ("bad argument #1"). Era clients keep the legacy paging driver.
 -- callback(fishCount, pagesScanned) fires when done.
+local scanMode = nil
+local scanQueue = nil
+local scanKey = nil
+local scanWait = 0
+local scanPriced = 0
+
 function PriceDB.StartScan(callback)
     if scanning then FF.API.Print("Scan already running.") return false end
     if FF.API.InCombat() then FF.API.Print("Cannot scan during combat.") return false end
+    if FF.API.AHIsOpen and not FF.API.AHIsOpen() then
+        FF.API.Print("Open the Auction House first, then /ff scan start.")
+        return false
+    end
     scanning = true
     scanPage = 0
     scanSeen = 0
+    scanPriced = 0
     scanCallback = callback
-    local ok, err = FF.API.AHSearch("", 0)
-    if not ok then
-        scanning = false
-        FF.API.Print("Scan failed to start: " .. tostring(err))
-        return false
+    if FF.API.probe.hasCAuctionHouse then
+        scanMode = "modern"
+        scanQueue = {}
+        for id in pairs(FF.FishDB.ByItemID) do table.insert(scanQueue, id) end
+        table.sort(scanQueue)
+        scanKey = nil
+        scanWait = 0
+        FF.API.Print("AH scan started (" .. #scanQueue .. " fish)...")
+    else
+        scanMode = "era"
+        local ok, err = FF.API.AHSearch("", 0)
+        if not ok then
+            scanning = false
+            FF.API.Print("Scan failed to start: " .. tostring(err))
+            return false
+        end
+        FF.API.Print("AH scan started...")
     end
-    FF.API.Print("AH scan started...")
     if not ticker then
         ticker = CreateFrame("Frame")
         ticker.elapsed = 0
@@ -133,10 +159,52 @@ end
 
 function PriceDB.IsScanning() return scanning end
 
--- One throttled step: read current page, record fish, advance page.
 function PriceDB._ScanTick()
     if not scanning then if ticker then ticker:Hide() end return end
     if FF.API.InCombat() then return end -- pause during combat, resume after
+    if scanMode == "modern" then
+        PriceDB._ScanTickModern()
+    else
+        PriceDB._ScanTickEra()
+    end
+end
+
+-- Modern driver: one ItemKey query in flight; poll until results are
+-- ready, record the cheapest per-unit buyout, move to the next fish.
+function PriceDB._ScanTickModern()
+    if scanKey then
+        if FF.API.AHResultsReady(scanKey) then
+            local per = FF.API.AHCheapestPerUnit(scanKey)
+            if per and per > 0 then
+                PriceDB.Record(scanKey.itemID, per)
+                scanSeen = scanSeen + 1
+                scanPriced = scanPriced + 1
+            end
+            scanKey = nil
+            scanWait = 0
+        else
+            scanWait = scanWait + PriceDB.SCAN_PAGE_DELAY
+            if scanWait >= 4 then scanKey = nil scanWait = 0 end
+            return
+        end
+    end
+    local nextID = scanQueue and table.remove(scanQueue, 1)
+    if not nextID then
+        PriceDB.StopScan("done, priced " .. scanPriced .. " fish")
+        return
+    end
+    local key = FF.API.AHItemKey(nextID)
+    local ok, err = FF.API.AHSearchItem(key)
+    if ok then
+        scanKey = key
+        scanWait = 0
+    else
+        FF.API.Print("Query rejected for item " .. tostring(nextID) .. ": " .. tostring(err))
+    end
+end
+
+-- Era driver: read current page, record fish, advance page.
+function PriceDB._ScanTickEra()
     local total = FF.API.AHResultCount()
     local page = FF.API.AHPage()
     local n = total or 50
@@ -171,7 +239,7 @@ function PriceDB.HookTooltips()
             tooltip:AddLine("FF: " .. col .. FF.FormatGold(price) .. "|r median, last " ..
                 col .. FF.FormatGold(FF.PriceDB.Get(itemID).last) .. "|r (" .. age .. ")")
         else
-            tooltip:AddLine("FF: |cffffd100no price yet — /ff scan|r")
+            tooltip:AddLine("FF: |cffffd100no price yet - /ff scan|r")
         end
         local best = FF.Recommend and FF.Recommend.BestZoneForFish(itemID)
         if best then

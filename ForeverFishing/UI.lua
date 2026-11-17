@@ -1,5 +1,9 @@
--- UI.lua — main panel (4 tabs), minimap button, waypoint helper.
+-- UI.lua - main panel (4 tabs), minimap button, waypoint helper.
 -- Everything movable; position persisted in SavedVariables.
+-- v0.2.0 restyle: deep-water + gold theme, tabs inside the panel with a
+-- gold active marker, divider lines, and a region pool - Refresh() runs
+-- every 0.5s, and FontStrings/Textures are NOT returned by GetChildren(),
+-- so the old cleanup leaked them on every single refresh.
 
 local FF = ForeverFishing
 local UI = {}
@@ -9,6 +13,10 @@ local panel = nil
 local minimapBtn = nil
 local currentTab = "where"
 
+-- Custom addon icon shipped as icon.tga next to this file (works on every
+-- OS: the game client reads it from the addon folder at runtime).
+local ICON_PATH = "Interface\\AddOns\\ForeverFishing\\icon.tga"
+
 local TABS = {
     { key = "where",   label = "Where to Fish" },
     { key = "prices",  label = "Prices" },
@@ -16,9 +24,89 @@ local TABS = {
     { key = "options", label = "Options" },
 }
 
+-- Theme: deep water + gold. Solid colours and long-standing built-in
+-- texture paths only, so it renders on any client flavour.
+local THEME = {
+    gold    = { 1.00, 0.82, 0.30 },
+    goldDim = { 0.85, 0.68, 0.30 },
+    teal    = { 0.35, 0.90, 1.00 },
+    text    = { 0.92, 0.90, 0.84 },
+    dim     = { 0.62, 0.62, 0.60 },
+    warn    = { 1.00, 0.80, 0.20 },
+    line    = { 0.55, 0.45, 0.20, 0.55 },
+    bgTop   = { 0.03, 0.13, 0.20, 0.94 },
+    bgBot   = { 0.01, 0.05, 0.09, 0.94 },
+}
+
+-- Region pool: everything a render creates is registered in `live` and
+-- recycled by the next Refresh instead of leaking.
+local pool = { fs = {}, tex = {}, btn = {} }
+local live = {}
+
+local function track(region, kind)
+    region._ffKind = kind
+    table.insert(live, region)
+    return region
+end
+
+local function poolFS(parent)
+    local fs = table.remove(pool.fs)
+    if not fs then fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal") end
+    fs:SetParent(parent)
+    fs:ClearAllPoints()
+    fs:Show()
+    return track(fs, "fs")
+end
+
+local function poolTex(parent)
+    local t = table.remove(pool.tex)
+    if not t then t = parent:CreateTexture(nil, "ARTWORK") end
+    t:SetParent(parent)
+    t:ClearAllPoints()
+    t:Show()
+    return track(t, "tex")
+end
+
+local function poolBtn(parent)
+    local b = table.remove(pool.btn)
+    if not b then b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") end
+    b:SetParent(parent)
+    b:ClearAllPoints()
+    b:SetScript("OnClick", nil)
+    b:Enable()
+    b:Show()
+    return track(b, "btn")
+end
+
+local function releaseLive()
+    for _, r in ipairs(live) do
+        r:Hide()
+        if r._ffKind == "btn" then r:SetScript("OnClick", nil) end
+        local bucket = pool[r._ffKind]
+        if bucket then table.insert(bucket, r) end
+    end
+    live = {}
+end
+
 local function ensurePanel()
     if panel then return panel end
-    panel = CreateFrame("Frame", "FFPanel", UIParent, "BasicFrameTemplateWithInset")
+    local panelTemplate = (BasicFrameTemplateWithInset ~= nil) and "BasicFrameTemplateWithInset" or nil
+    panel = CreateFrame("Frame", "FFPanel", UIParent, panelTemplate)
+    if not panelTemplate then
+        -- Older clients lack the inset template: build the chrome by hand
+        -- from long-standing built-in textures so the panel never errors.
+        panel:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 24,
+            insets = { left = 10, right = 10, top = 10, bottom = 10 },
+        })
+        panel.TitleBg = panel:CreateTexture(nil, "BORDER")
+        panel.TitleBg:SetColorTexture(0.05, 0.16, 0.24, 0.95)
+        panel.TitleBg:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -8)
+        panel.TitleBg:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -8, -8)
+        panel.TitleBg:SetHeight(30)
+    end
     panel:SetSize(520, 420)
     panel:SetPoint("CENTER")
     panel:SetMovable(true)
@@ -31,30 +119,59 @@ local function ensurePanel()
         db.panelPos = { self:GetPoint() }
         ForeverFishingDB = db
     end)
+    panel:SetScript("OnShow", function() UI.Refresh() end)
+
+    -- Deep-water gradient behind the content (title bar keeps the
+    -- template look). Solid colour first; gradient is a guarded bonus.
+    local bg = panel:CreateTexture(nil, "BACKGROUND")
+    bg:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -56)
+    bg:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -8, 8)
+    bg:SetColorTexture(unpack(THEME.bgTop))
+    if CreateColor and bg.SetGradient then
+        pcall(function()
+            bg:SetGradient("VERTICAL",
+                CreateColor(THEME.bgBot[1], THEME.bgBot[2], THEME.bgBot[3], THEME.bgBot[4]),
+                CreateColor(THEME.bgTop[1], THEME.bgTop[2], THEME.bgTop[3], THEME.bgTop[4]))
+        end)
+    end
+
     panel.TitleBg:SetHeight(30)
-    panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local icon = panel:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(18, 18)
+    icon:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -7)
+    icon:SetTexture(ICON_PATH)
+    panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     panel.title:SetPoint("TOP", panel.TitleBg, "TOP", 0, -8)
     panel.title:SetText("ForeverFishing")
+    panel.title:SetTextColor(unpack(THEME.gold))
     panel:Hide()
 
     local db = ForeverFishingDB
     if db and db.panelPos then panel:SetPoint(unpack(db.panelPos)) end
 
-    -- Tab buttons.
+    -- Tab buttons, inside the panel under the title bar. The active tab
+    -- gets gold text and a gold underline bar.
     local tabBtns = {}
     for i, t in ipairs(TABS) do
         local b = CreateFrame("Button", "FFTab" .. t.key, panel, "UIPanelButtonTemplate")
-        b:SetSize(110, 22)
-        b:SetPoint("TOPLEFT", panel, "BOTTOMLEFT", 10 + (i - 1) * 115, 2)
+        b:SetSize(120, 22)
+        b:SetPoint("TOPLEFT", panel, "TOPLEFT", 10 + (i - 1) * 124, -30)
         b:SetText(t.label)
         b:SetScript("OnClick", function() UI.ShowTab(t.key) end)
+        local bar = b:CreateTexture(nil, "OVERLAY")
+        bar:SetColorTexture(unpack(THEME.gold))
+        bar:SetHeight(2)
+        bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 8, 1)
+        bar:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -8, 1)
+        bar:Hide()
+        b._ffBar = bar
         tabBtns[t.key] = b
     end
     UI._tabBtns = tabBtns
 
     -- Content scroll frame.
     local scroll = CreateFrame("ScrollFrame", "FFScroll", panel, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -32)
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -58)
     scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 8)
     local content = CreateFrame("Frame", "FFScrollChild", scroll)
     content:SetSize(470, 600)
@@ -88,10 +205,17 @@ end
 function UI.Refresh()
     if not panel or not panel:IsShown() then return end
     for k, b in pairs(UI._tabBtns or {}) do
-        if k == currentTab then b:Disable() else b:Enable() end
+        local fs = b.GetFontString and b:GetFontString()
+        if k == currentTab then
+            if fs then fs:SetTextColor(unpack(THEME.gold)) end
+            if b._ffBar then b._ffBar:Show() end
+        else
+            if fs then fs:SetTextColor(unpack(THEME.text)) end
+            if b._ffBar then b._ffBar:Hide() end
+        end
     end
+    releaseLive()
     local c = UI._content
-    for _, child in ipairs({ c:GetChildren() }) do child:Hide() child:SetParent(nil) end
     if currentTab == "where" then UI._RenderWhere(c)
     elseif currentTab == "prices" then UI._RenderPrices(c)
     elseif currentTab == "session" then UI._RenderSession(c)
@@ -99,22 +223,30 @@ function UI.Refresh()
 end
 
 local function addLine(parent, text, y, color)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = poolFS(parent)
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y)
     fs:SetWidth(450)
     fs:SetJustifyH("LEFT")
     fs:SetText(text)
-    if color then fs:SetTextColor(unpack(color)) end
+    fs:SetTextColor(unpack(color or THEME.text))
     return y - 16
 end
 
-local function addButton(parent, label, y, onClick)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(140, 20)
-    b:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y)
+local function addDivider(parent, y)
+    local t = poolTex(parent)
+    t:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y - 3)
+    t:SetSize(452, 1)
+    t:SetColorTexture(unpack(THEME.line))
+    return y - 10
+end
+
+local function addButton(parent, label, y, onClick, x, w)
+    local b = poolBtn(parent)
+    b:SetSize(w or 140, 20)
+    b:SetPoint("TOPLEFT", parent, "TOPLEFT", x or 8, y)
     b:SetText(label)
     b:SetScript("OnClick", onClick)
-    return y - 26
+    return b
 end
 
 function UI._RenderWhere(c)
@@ -123,11 +255,13 @@ function UI._RenderWhere(c)
     local debug = opts.debugSkill and { debugSkill = opts.debugSkill } or nil
     local top = FF.Recommend.TopZones(debug)
     if #top == 0 then
-        y = addLine(c, "No zones available. Scan the AH first: /ff scan start", y, { 1, 0.8, 0.2 })
+        y = addLine(c, "No zones available. Scan the AH first: /ff scan start", y, THEME.warn)
     end
     for i, z in ipairs(top) do
-        y = addLine(c, string.format("#%d  %s — est %s/h%s", i, z.zoneName,
-            FF.FormatGold(z.goldPerHour), z.unpriced and "  [UNPRICED MODE — static tiers]" or ""), y, { 0.4, 0.9, 1 })
+        if i > 1 then y = addDivider(c, y) end
+        y = addLine(c, string.format("#%d  %s - est %s/h%s", i, z.zoneName,
+            FF.FormatGold(z.goldPerHour), z.unpriced and "  [UNPRICED MODE - static tiers]" or ""),
+            y, i == 1 and THEME.gold or THEME.teal)
         y = addLine(c, "   " .. z.getawayNote, y)
         y = addLine(c, "   Lure: " .. z.lureAdvice, y)
         if #z.pools > 0 then
@@ -136,10 +270,10 @@ function UI._RenderWhere(c)
         local fishNames = {}
         for j = 1, math.min(3, #z.moneyFish) do table.insert(fishNames, z.moneyFish[j].name) end
         y = addLine(c, "   Money fish: " .. table.concat(fishNames, ", "), y)
-        y = addLine(c, "   Why this zone:", y, { 1, 1, 0.6 })
-        for _, line in ipairs(z.explain) do y = addLine(c, line, y, { 0.8, 0.8, 0.8 }) end
-        y = addButton(c, "Waypoint", y, function() UI.SetWaypoint(z.zone) end)
-        y = y - 8
+        y = addLine(c, "   Why this zone:", y, THEME.goldDim)
+        for _, line in ipairs(z.explain) do y = addLine(c, line, y, THEME.dim) end
+        addButton(c, "Waypoint", y, function() UI.SetWaypoint(z.zone) end)
+        y = y - 26 - 8
     end
     c:SetHeight(math.max(200, -y + 20))
 end
@@ -147,18 +281,19 @@ end
 function UI._RenderPrices(c)
     local y = -8
     if not FF.PriceDB.HasAnyPrices() then
-        y = addLine(c, "No prices yet — open the Auction House or /ff scan start", y, { 1, 0.8, 0.2 })
+        y = addLine(c, "No prices yet - open the Auction House or /ff scan start", y, THEME.warn)
     end
-    y = addLine(c, string.format("%-24s %10s %10s %12s %s", "Fish", "Last", "Median", "Age", "Best zone"), y, { 1, 1, 0.6 })
+    y = addLine(c, string.format("%-24s %10s %10s %12s %s", "Fish", "Last", "Median", "Age", "Best zone"), y, THEME.goldDim)
+    y = addDivider(c, y + 4)
     for _, f in ipairs(FF.FishDB.FISH) do
         local p = FF.PriceDB.Get(f.itemID)
-        local last = p and FF.FormatGold(p.last) or "—"
+        local last = p and FF.FormatGold(p.last) or "-"
         local med = FF.PriceDB.Median(f.itemID)
-        med = med and FF.FormatGold(med) or "—"
+        med = med and FF.FormatGold(med) or "-"
         local age = FF.PriceDB.FormatAge(f.itemID)
         local stale = FF.PriceDB.IsStale(f.itemID)
-        local best = FF.Recommend.BestZoneForFish(f.itemID) or "—"
-        local col = stale and { 0.6, 0.6, 0.6 } or nil
+        local best = FF.Recommend.BestZoneForFish(f.itemID) or "-"
+        local col = stale and THEME.dim or THEME.text
         y = addLine(c, string.format("%-24s %10s %10s %12s %s%s", f.name, last, med, age, best, stale and " (stale)" or ""), y, col)
     end
     c:SetHeight(math.max(200, -y + 20))
@@ -173,21 +308,19 @@ end
 function UI._RenderOptions(c)
     local y = -8
     local opts = FF.Options.Get()
-    y = addLine(c, "Scan behaviour:", y, { 1, 1, 0.6 })
-    y = addButton(c, opts.autoScanOnAH and "Auto-scan on AH: ON" or "Auto-scan on AH: OFF", y,
+    y = addLine(c, "Scan behaviour:", y, THEME.goldDim)
+    addButton(c, opts.autoScanOnAH and "Auto-scan on AH: ON" or "Auto-scan on AH: OFF", y,
         function() FF.Options.Set("autoScanOnAH", not opts.autoScanOnAH) UI.Refresh() end)
-    y = addLine(c, "Overlay while fishing:", y, { 1, 1, 0.6 })
-    y = addButton(c, opts.overlayEnabled and "Overlay: ON" or "Overlay: OFF", y,
+    y = y - 26
+    y = addLine(c, "Overlay while fishing:", y, THEME.goldDim)
+    addButton(c, opts.overlayEnabled and "Overlay: ON" or "Overlay: OFF", y,
         function() FF.Options.Set("overlayEnabled", not opts.overlayEnabled) FF.Session.ToggleOverlay(opts.overlayEnabled) UI.Refresh() end)
-    y = addLine(c, "Debug (test): lower skill for recommendations:", y, { 1, 1, 0.6 })
+    y = y - 26
+    y = addLine(c, "Debug (test): lower skill for recommendations:", y, THEME.goldDim)
     local skills = { nil, 100, 140, 200 }
     local labels = { "off", "100", "140", "200" }
     for i, s in ipairs(skills) do
-        local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
-        b:SetSize(60, 20)
-        b:SetPoint("TOPLEFT", c, "TOPLEFT", 8 + (i - 1) * 66, y)
-        b:SetText(labels[i])
-        b:SetScript("OnClick", function() FF.Options.Set("debugSkill", s) UI.Refresh() end)
+        local b = addButton(c, labels[i], y, function() FF.Options.Set("debugSkill", s) UI.Refresh() end, 8 + (i - 1) * 66, 60)
         if opts.debugSkill == s then b:Disable() end
     end
     y = y - 30
@@ -202,7 +335,7 @@ function UI.SetWaypoint(zoneKey)
         pcall(TomTom.AddWaypoint, zone.id, nil, nil, { title = zone.name .. " (fishing)" })
         FF.API.Print("TomTom waypoint set: " .. zone.name)
     else
-        FF.API.Print("No TomTom — travel to " .. zone.name .. " and fish its pools/open water.")
+        FF.API.Print("No TomTom - travel to " .. zone.name .. " and fish its pools/open water.")
     end
 end
 
@@ -216,8 +349,12 @@ function UI.InitMinimap()
     local icon = minimapBtn:CreateTexture(nil, "BACKGROUND")
     icon:SetSize(20, 20)
     icon:SetPoint("CENTER")
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Fish_01")
+    icon:SetTexture(ICON_PATH)
     minimapBtn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    local ring = minimapBtn:CreateTexture(nil, "ARTWORK")
+    ring:SetSize(54, 54)
+    ring:SetPoint("CENTER")
+    ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     minimapBtn:SetScript("OnClick", function() UI.Toggle() end)
     minimapBtn:RegisterForClicks("LeftButtonUp")
 end

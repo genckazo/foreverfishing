@@ -1,4 +1,4 @@
--- Options.lua — settings persisted in SavedVariables.
+-- Options.lua - settings persisted in SavedVariables.
 
 local FF = ForeverFishing
 local Options = {}

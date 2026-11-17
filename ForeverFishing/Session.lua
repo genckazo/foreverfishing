@@ -1,4 +1,4 @@
--- Session.lua — live session stats: casts, catches, gold/hour, catch log,
+-- Session.lua - live session stats: casts, catches, gold/hour, catch log,
 -- lure expiry and zone skill warnings. NO automation of any kind:
 -- nothing here casts, loots, or recasts.
 
@@ -91,7 +91,7 @@ end
 function Session.ToggleOverlay(show)
     if not overlay then
         overlay = CreateFrame("Frame", "FFSessionOverlay", UIParent)
-        overlay:SetSize(260, 20)
+        overlay:SetSize(320, 24)
         overlay:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
         overlay:SetMovable(true)
         overlay:EnableMouse(true)
@@ -103,10 +103,12 @@ function Session.ToggleOverlay(show)
             db.overlayPos = { self:GetPoint() }
             ForeverFishingDB = db
         end)
-        overlay:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = nil, tile = true })
-        overlay:SetBackdropColor(0, 0, 0, 0.6)
-        overlay.text = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        overlay:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true })
+        overlay:SetBackdropColor(0.02, 0.08, 0.13, 0.78)
+        overlay:SetBackdropBorderColor(0.55, 0.45, 0.20, 0.9)
+        overlay.text = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         overlay.text:SetPoint("CENTER")
+        overlay.text:SetTextColor(0.95, 0.90, 0.78)
         overlay:Hide()
         local db = ForeverFishingDB
         if db and db.overlayPos then overlay:SetPoint(unpack(db.overlayPos)) end

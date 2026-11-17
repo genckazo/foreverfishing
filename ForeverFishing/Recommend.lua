@@ -1,4 +1,4 @@
--- Recommend.lua — scoring engine: expected gold/hour per zone for THIS
+-- Recommend.lua - scoring engine: expected gold/hour per zone for THIS
 -- player, right now. All maths exposed via Explain() so nothing is a
 -- black box. Works in unpriced mode (static tiers) when the price DB
 -- is empty.
@@ -102,9 +102,9 @@ function Recommend.ScoreZone(zoneKey, opts)
     end
     local getawayNote
     if worstNeed > 0 and skill < worstNeed then
-        getawayNote = string.format("you: %d + %d lure = %d < %d needed — expect some getaways", baseSkill, lure, skill, worstNeed)
+        getawayNote = string.format("you: %d + %d lure = %d < %d needed - expect some getaways", baseSkill, lure, skill, worstNeed)
     elseif worstNeed > 0 then
-        getawayNote = string.format("you: %d + %d lure = %d >= %d needed — no getaways expected", baseSkill, lure, skill, worstNeed)
+        getawayNote = string.format("you: %d + %d lure = %d >= %d needed - no getaways expected", baseSkill, lure, skill, worstNeed)
     else
         getawayNote = "no skill gate in this zone at your level"
     end
